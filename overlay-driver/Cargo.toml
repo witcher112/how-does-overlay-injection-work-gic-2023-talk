@@ -50,3 +50,6 @@ features = [
     "windowsx",
     "winbase",
 ]
+
+[build-dependencies]
+find-winsdk = "^0.2.0"

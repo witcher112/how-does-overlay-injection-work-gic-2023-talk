@@ -38,6 +38,8 @@ use winapi::um::winuser::CW_USEDEFAULT;
 use winapi::um::winuser::WS_OVERLAPPEDWINDOW;
 use winapi::Interface;
 
+use crate::update_d3d11_overlay;
+
 type CreateDXGIFactory1 = unsafe extern "system" fn(REFIID, *mut *mut c_void) -> HRESULT;
 
 type D3D11CreateDeviceAndSwapChain = unsafe extern "system" fn(
@@ -252,7 +254,7 @@ pub unsafe extern "system" fn dxgi_swap_chain_present_method_hook_detour(
     let dxgi_swap_chain_present_method_hook_trampoline: DXGISwapChainPresentMethod =
         std::mem::transmute(dxgi_swap_chain_present_method_hook.trampoline());
 
-    log::info!("I'm hooked into IDXGISwapChain::Present! :)");
+    update_d3d11_overlay(dxgi_swap_chain);
 
     return dxgi_swap_chain_present_method_hook_trampoline(
         dxgi_swap_chain,
