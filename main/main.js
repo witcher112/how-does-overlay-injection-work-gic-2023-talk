@@ -176,14 +176,20 @@ class EncodedMessageDataStream extends stream.Transform {
     const serverMessagePayload = serverMessagePayloadType.decode(data);
 
     const onSizeChangedMessagePayload = serverMessagePayload.onSizeChangedMessagePayload;
+    const onInputEventReceivedMessagePayload = serverMessagePayload.onInputEventReceivedMessagePayload;
 
-    if (onSizeChangedMessagePayload !== undefined) {
-
-      console.log(onSizeChangedMessagePayload);
+    if (onSizeChangedMessagePayload) {
 
       overlayWindowHandle.setSize(
         onSizeChangedMessagePayload.width,
         onSizeChangedMessagePayload.height,
+      );
+    }
+
+    if (onInputEventReceivedMessagePayload) {
+
+      overlayWindowHandle.webContents.sendInputEvent(
+        onInputEventReceivedMessagePayload,
       );
     }
   });

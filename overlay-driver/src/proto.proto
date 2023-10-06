@@ -17,8 +17,22 @@ message OnSizeChangedMessagePayload {
   uint32 height = 2;
 }
 
+message OnInputEventReceivedMessagePayload {
+  optional string type = 1;
+  optional string key_code = 2;
+  optional int32 x = 3;
+  optional int32 y = 4;
+  optional string button = 5;
+  optional int32 click_count = 6;
+  optional int32 delta_x = 7;
+  optional int32 delta_y = 8;
+  optional bool can_scroll  = 9;
+  repeated string modifiers = 10;
+}
+
 message ServerMessagePayload {
   oneof value {
     OnSizeChangedMessagePayload on_size_changed_message_payload = 1;
+    OnInputEventReceivedMessagePayload on_input_event_received_message_payload = 2;
   }
 }

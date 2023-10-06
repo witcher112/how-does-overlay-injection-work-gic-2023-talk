@@ -1,8 +1,10 @@
 use std::ffi::CString;
+use std::mem::zeroed;
 use std::ptr::copy;
 use std::ptr::null_mut;
 use std::sync::Mutex;
 use winapi::ctypes::c_void;
+use winapi::shared::dxgi::DXGI_SWAP_CHAIN_DESC;
 use winapi::shared::dxgi::IDXGISwapChain;
 use winapi::shared::dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM;
 use winapi::shared::dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
@@ -530,6 +532,17 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
         .set_on_size_changed_message_payload(on_size_changed_message_payload_proto);
 
     send_server_message(server_message_payload_proto);
+
+    let mut dxgi_swap_chain_desc: DXGI_SWAP_CHAIN_DESC = zeroed();
+    let hr = dxgi_swap_chain
+        .as_ref()
+        .unwrap()
+        .GetDesc(&mut dxgi_swap_chain_desc);
+    if hr != 0 {
+        panic!();
+    }
+
+    init_input_hook(dxgi_swap_chain_desc.OutputWindow);
 }
 
 pub unsafe fn update_d3d11_overlay(dxgi_swap_chain: *mut IDXGISwapChain) {
