@@ -4,7 +4,12 @@ use std::ptr::null_mut;
 use std::sync::Mutex;
 use winapi::ctypes::c_void;
 use winapi::shared::dxgi::IDXGISwapChain;
+use winapi::shared::dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM;
+use winapi::shared::dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+use winapi::shared::dxgiformat::DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
 use winapi::shared::dxgiformat::DXGI_FORMAT_R32G32B32_FLOAT;
+use winapi::shared::dxgiformat::DXGI_FORMAT_R32G32_FLOAT;
+use winapi::shared::dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
 use winapi::um::d3d11::ID3D11BlendState;
@@ -15,14 +20,17 @@ use winapi::um::d3d11::ID3D11InputLayout;
 use winapi::um::d3d11::ID3D11PixelShader;
 use winapi::um::d3d11::ID3D11RasterizerState;
 use winapi::um::d3d11::ID3D11RenderTargetView;
+use winapi::um::d3d11::ID3D11ShaderResourceView;
 use winapi::um::d3d11::ID3D11Texture2D;
 use winapi::um::d3d11::ID3D11VertexShader;
+use winapi::um::d3d11::D3D11_BIND_SHADER_RESOURCE;
 use winapi::um::d3d11::D3D11_BIND_VERTEX_BUFFER;
 use winapi::um::d3d11::D3D11_BLEND_DESC;
 use winapi::um::d3d11::D3D11_BLEND_DEST_ALPHA;
 use winapi::um::d3d11::D3D11_BLEND_INV_SRC_ALPHA;
 use winapi::um::d3d11::D3D11_BLEND_OP_ADD;
 use winapi::um::d3d11::D3D11_BLEND_SRC_ALPHA;
+use winapi::um::d3d11::D3D11_BOX;
 use winapi::um::d3d11::D3D11_BUFFER_DESC;
 use winapi::um::d3d11::D3D11_COLOR_WRITE_ENABLE_ALL;
 use winapi::um::d3d11::D3D11_CPU_ACCESS_WRITE;
@@ -33,10 +41,13 @@ use winapi::um::d3d11::D3D11_INPUT_PER_VERTEX_DATA;
 use winapi::um::d3d11::D3D11_MAPPED_SUBRESOURCE;
 use winapi::um::d3d11::D3D11_MAP_WRITE_DISCARD;
 use winapi::um::d3d11::D3D11_RASTERIZER_DESC;
+use winapi::um::d3d11::D3D11_SHADER_RESOURCE_VIEW_DESC;
 use winapi::um::d3d11::D3D11_TEXTURE2D_DESC;
+use winapi::um::d3d11::D3D11_USAGE_DEFAULT;
 use winapi::um::d3d11::D3D11_USAGE_DYNAMIC;
 use winapi::um::d3d11::D3D11_VIEWPORT;
 use winapi::um::d3dcommon::D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+use winapi::um::d3dcommon::D3D11_SRV_DIMENSION_TEXTURE2D;
 use winapi::Interface;
 
 pub use crate::*;
@@ -44,6 +55,7 @@ pub use crate::*;
 pub struct D3D11OverlayState {
     pub dxgi_swap_chain: *mut IDXGISwapChain,
     pub dxgi_swap_chain_back_buffer: *mut ID3D11Texture2D,
+    pub dxgi_swap_chain_back_buffer_desc: D3D11_TEXTURE2D_DESC,
     pub d3d11_device: *mut ID3D11Device,
     pub d3d11_device_context: *mut ID3D11DeviceContext,
     pub d3d11_render_target_view: *mut ID3D11RenderTargetView,
@@ -52,6 +64,8 @@ pub struct D3D11OverlayState {
     pub d3d11_pixel_shader: *mut ID3D11PixelShader,
     pub d3d11_input_layout: *mut ID3D11InputLayout,
     pub d3d11_vertex_buffer: *mut ID3D11Buffer,
+    pub d3d11_main_texture: *mut ID3D11Texture2D,
+    pub d3d11_shader_main_texture_view: *mut ID3D11ShaderResourceView,
     pub d3d11_rasterizer_state: *mut ID3D11RasterizerState,
     pub d3d11_state_block: D3D11StateBlock,
 }
@@ -67,6 +81,8 @@ struct D3D11OverlayVertexData {
     pub position_x: f32,
     pub position_y: f32,
     pub position_z: f32,
+    pub texcoord_u: f32,
+    pub texcoord_v: f32,
 }
 
 pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGISwapChain) {
@@ -234,20 +250,30 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
         .PSSetShader(d3d11_pixel_shader, null_mut(), 0);
 
     let d3d11_input_element_0_semantic_name = CString::new("POSITION").unwrap();
+    let d3d11_input_element_1_semantic_name = CString::new("TEXCOORD").unwrap();
     let d3d11_input_elements_desc: &[D3D11_INPUT_ELEMENT_DESC] = &[D3D11_INPUT_ELEMENT_DESC {
-        SemanticName: d3d11_input_element_0_semantic_name.as_ptr(),
-        SemanticIndex: 0,
-        Format: DXGI_FORMAT_R32G32B32_FLOAT,
-        InputSlot: 0,
-        AlignedByteOffset: 0,
-        InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
-        InstanceDataStepRate: 0,
-    }];
+            SemanticName: d3d11_input_element_0_semantic_name.as_ptr(),
+            SemanticIndex: 0,
+            Format: DXGI_FORMAT_R32G32B32_FLOAT,
+            InputSlot: 0,
+            AlignedByteOffset: 0,
+            InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
+            InstanceDataStepRate: 0,
+        },
+        D3D11_INPUT_ELEMENT_DESC {
+            SemanticName: d3d11_input_element_1_semantic_name.as_ptr(),
+            SemanticIndex: 0,
+            Format: DXGI_FORMAT_R32G32_FLOAT,
+            InputSlot: 0,
+            AlignedByteOffset: 12,
+            InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
+            InstanceDataStepRate: 0,
+        }];
 
     let mut d3d11_input_layout: *mut ID3D11InputLayout = null_mut();
     let hr = d3d11_device.as_ref().unwrap().CreateInputLayout(
         d3d11_input_elements_desc.as_ptr(),
-        1,
+        2,
         D3D11_VERTEX_SHADER_OBJ_BYTES.as_ptr() as *const c_void,
         D3D11_VERTEX_SHADER_OBJ_BYTES.len(),
         &mut d3d11_input_layout,
@@ -272,19 +298,46 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
 
     let d3d11_vertex_buffer_data: &[D3D11OverlayVertexData] = &[
         D3D11OverlayVertexData {
-            position_x: 0.0,
-            position_y: 0.5,
+            position_x: -1.0,
+            position_y: 1.0,
             position_z: 0.0,
+            texcoord_u: 0.0,
+            texcoord_v: 0.0,
         },
         D3D11OverlayVertexData {
-            position_x: -0.5,
-            position_y: -0.5,
+            position_x: -1.0,
+            position_y: -1.0,
             position_z: 0.0,
+            texcoord_u: 0.0,
+            texcoord_v: 1.0,
         },
         D3D11OverlayVertexData {
-            position_x: 0.5,
-            position_y: -0.5,
+            position_x: 1.0,
+            position_y: -1.0,
             position_z: 0.0,
+            texcoord_u: 1.0,
+            texcoord_v: 1.0,
+        },
+        D3D11OverlayVertexData {
+            position_x: 1.0,
+            position_y: -1.0,
+            position_z: 0.0,
+            texcoord_u: 1.0,
+            texcoord_v: 1.0,
+        },
+        D3D11OverlayVertexData {
+            position_x: 1.0,
+            position_y: 1.0,
+            position_z: 0.0,
+            texcoord_u: 1.0,
+            texcoord_v: 0.0,
+        },
+        D3D11OverlayVertexData {
+            position_x: -1.0,
+            position_y: 1.0,
+            position_z: 0.0,
+            texcoord_u: 0.0,
+            texcoord_v: 0.0,
         },
     ];
 
@@ -345,6 +398,62 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
         &d3d11_vertex_buffer_offset,
     );
 
+    let mut d3d11_main_texture_desc: D3D11_TEXTURE2D_DESC = std::mem::zeroed();
+    d3d11_main_texture_desc.Width = dxgi_swap_chain_back_buffer_desc.Width;
+    d3d11_main_texture_desc.Height = dxgi_swap_chain_back_buffer_desc.Height;
+    d3d11_main_texture_desc.MipLevels = 1;
+    d3d11_main_texture_desc.ArraySize = 1;
+    d3d11_main_texture_desc.Format = match dxgi_swap_chain_back_buffer_desc.Format {
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB => DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        DXGI_FORMAT_B8G8R8A8_UNORM_SRGB => DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        DXGI_FORMAT_B8G8R8X8_UNORM_SRGB => DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        _ => DXGI_FORMAT_B8G8R8A8_UNORM,
+    };
+    d3d11_main_texture_desc.SampleDesc.Count = 1;
+    d3d11_main_texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    d3d11_main_texture_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    d3d11_main_texture_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    let mut d3d11_main_texture: *mut ID3D11Texture2D = null_mut();
+    let hr = d3d11_device.as_ref().unwrap().CreateTexture2D(
+        &d3d11_main_texture_desc,
+        null_mut(),
+        &mut d3d11_main_texture,
+    );
+    if hr != 0 {
+        panic!();
+    }
+    let d3d11_main_texture = d3d11_main_texture;
+    let _release_d3d11_main_texture_guard = scopeguard::guard((), |_| {
+        d3d11_main_texture.as_ref().unwrap().Release();
+    });
+
+    let mut d3d11_shader_main_texture_view_desc: D3D11_SHADER_RESOURCE_VIEW_DESC =
+        std::mem::zeroed();
+    d3d11_shader_main_texture_view_desc.Format = d3d11_main_texture_desc.Format;
+    d3d11_shader_main_texture_view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    d3d11_shader_main_texture_view_desc
+        .u
+        .Texture2D_mut()
+        .MostDetailedMip = 0;
+    d3d11_shader_main_texture_view_desc
+        .u
+        .Texture2D_mut()
+        .MipLevels = d3d11_main_texture_desc.MipLevels;
+
+    let mut d3d11_shader_main_texture_view: *mut ID3D11ShaderResourceView = null_mut();
+    let hr = d3d11_device.as_ref().unwrap().CreateShaderResourceView(
+        d3d11_main_texture as *mut _,
+        &d3d11_shader_main_texture_view_desc,
+        &mut d3d11_shader_main_texture_view,
+    );
+    if hr != 0 {
+        panic!();
+    }
+    let _release_d3d11_shader_main_texture_view_guard = scopeguard::guard((), |_| {
+        d3d11_shader_main_texture_view.as_ref().unwrap().Release();
+    });
+
     let mut d3d11_rasterizer_desc: D3D11_RASTERIZER_DESC = std::mem::zeroed();
     d3d11_rasterizer_desc.CullMode = D3D11_CULL_NONE;
     d3d11_rasterizer_desc.FillMode = D3D11_FILL_SOLID;
@@ -386,11 +495,14 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
     d3d11_pixel_shader.as_ref().unwrap().AddRef();
     d3d11_input_layout.as_ref().unwrap().AddRef();
     d3d11_vertex_buffer.as_ref().unwrap().AddRef();
+    d3d11_main_texture.as_ref().unwrap().AddRef();
+    d3d11_shader_main_texture_view.as_ref().unwrap().AddRef();
     d3d11_rasterizer_state.as_ref().unwrap().AddRef();
 
     *d3d11_overlay_state = Some(D3D11OverlayState {
         dxgi_swap_chain,
         dxgi_swap_chain_back_buffer,
+        dxgi_swap_chain_back_buffer_desc,
         d3d11_device,
         d3d11_device_context,
         d3d11_render_target_view,
@@ -399,6 +511,8 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
         d3d11_pixel_shader,
         d3d11_input_layout,
         d3d11_vertex_buffer,
+        d3d11_main_texture,
+        d3d11_shader_main_texture_view,
         d3d11_rasterizer_state,
         d3d11_state_block,
     });
@@ -412,6 +526,41 @@ pub unsafe fn update_d3d11_overlay(dxgi_swap_chain: *mut IDXGISwapChain) {
     let d3d11_overlay_state = &*d3d11_overlay_state_guard;
 
     let d3d11_overlay_state = d3d11_overlay_state.as_ref().unwrap();
+
+    let mut d3d11_box: D3D11_BOX = std::mem::zeroed();
+
+    d3d11_box.left = 0;
+    d3d11_box.right = d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width;
+    d3d11_box.top = 0;
+    d3d11_box.bottom = d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height;
+    d3d11_box.front = 0;
+    d3d11_box.back = 1;
+
+    let mut overlay_texture_bytes = Vec::<u8>::new();
+
+    for y in 0..d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height {
+        for x in 0..d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width {
+            overlay_texture_bytes
+                .push((x * 255 / d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width) as u8);
+            overlay_texture_bytes
+                .push((y * 255 / d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height) as u8);
+            overlay_texture_bytes.push(0);
+            overlay_texture_bytes.push(220);
+        }
+    }
+
+    d3d11_overlay_state
+        .d3d11_device_context
+        .as_ref()
+        .unwrap()
+        .UpdateSubresource(
+            d3d11_overlay_state.d3d11_main_texture as _,
+            0,
+            &d3d11_box,
+            overlay_texture_bytes.as_ptr() as *const _,
+            d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width * 4,
+            0,
+        );
 
     let d3d11_retaining_state_block = capture_d3d11_state(d3d11_overlay_state.d3d11_device_context);
     let _release_d3d11_retaining_state_block_guard = scopeguard::guard((), |_| {
@@ -451,7 +600,13 @@ pub unsafe fn update_d3d11_overlay(dxgi_swap_chain: *mut IDXGISwapChain) {
         .d3d11_device_context
         .as_ref()
         .unwrap()
-        .Draw(3, 0);
+        .PSSetShaderResources(0, 1, &d3d11_overlay_state.d3d11_shader_main_texture_view);
+
+    d3d11_overlay_state
+        .d3d11_device_context
+        .as_ref()
+        .unwrap()
+        .Draw(6, 0);
 
     d3d11_overlay_state
         .d3d11_device_context
