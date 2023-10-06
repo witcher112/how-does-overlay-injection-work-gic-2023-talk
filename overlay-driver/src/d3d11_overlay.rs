@@ -251,7 +251,8 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
 
     let d3d11_input_element_0_semantic_name = CString::new("POSITION").unwrap();
     let d3d11_input_element_1_semantic_name = CString::new("TEXCOORD").unwrap();
-    let d3d11_input_elements_desc: &[D3D11_INPUT_ELEMENT_DESC] = &[D3D11_INPUT_ELEMENT_DESC {
+    let d3d11_input_elements_desc: &[D3D11_INPUT_ELEMENT_DESC] = &[
+        D3D11_INPUT_ELEMENT_DESC {
             SemanticName: d3d11_input_element_0_semantic_name.as_ptr(),
             SemanticIndex: 0,
             Format: DXGI_FORMAT_R32G32B32_FLOAT,
@@ -268,7 +269,8 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
             AlignedByteOffset: 12,
             InputSlotClass: D3D11_INPUT_PER_VERTEX_DATA,
             InstanceDataStepRate: 0,
-        }];
+        },
+    ];
 
     let mut d3d11_input_layout: *mut ID3D11InputLayout = null_mut();
     let hr = d3d11_device.as_ref().unwrap().CreateInputLayout(
@@ -516,6 +518,18 @@ pub unsafe fn init_d3d11_overlay_if_not_initialized(dxgi_swap_chain: *mut IDXGIS
         d3d11_rasterizer_state,
         d3d11_state_block,
     });
+
+    let mut server_message_payload_proto = proto::ServerMessagePayload::new();
+
+    let mut on_size_changed_message_payload_proto = proto::OnSizeChangedMessagePayload::new();
+
+    on_size_changed_message_payload_proto.set_width(dxgi_swap_chain_back_buffer_desc.Width);
+    on_size_changed_message_payload_proto.set_height(dxgi_swap_chain_back_buffer_desc.Height);
+
+    server_message_payload_proto
+        .set_on_size_changed_message_payload(on_size_changed_message_payload_proto);
+
+    send_server_message(server_message_payload_proto);
 }
 
 pub unsafe fn update_d3d11_overlay(dxgi_swap_chain: *mut IDXGISwapChain) {
@@ -527,40 +541,41 @@ pub unsafe fn update_d3d11_overlay(dxgi_swap_chain: *mut IDXGISwapChain) {
 
     let d3d11_overlay_state = d3d11_overlay_state.as_ref().unwrap();
 
-    let mut d3d11_box: D3D11_BOX = std::mem::zeroed();
+    {
+        let overlay_state_guard = OVERLAY_STATE.lock().unwrap();
 
-    d3d11_box.left = 0;
-    d3d11_box.right = d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width;
-    d3d11_box.top = 0;
-    d3d11_box.bottom = d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height;
-    d3d11_box.front = 0;
-    d3d11_box.back = 1;
+        let overlay_state = &*overlay_state_guard;
 
-    let mut overlay_texture_bytes = Vec::<u8>::new();
+        if let Some(overlay_texture_info) = overlay_state.texture_info.as_ref() {
+            if overlay_texture_info.width
+                == d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width
+                && overlay_texture_info.height
+                    == d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height
+            {
+                let mut d3d11_box: D3D11_BOX = std::mem::zeroed();
 
-    for y in 0..d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height {
-        for x in 0..d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width {
-            overlay_texture_bytes
-                .push((x * 255 / d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width) as u8);
-            overlay_texture_bytes
-                .push((y * 255 / d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Height) as u8);
-            overlay_texture_bytes.push(0);
-            overlay_texture_bytes.push(220);
+                d3d11_box.left = 0;
+                d3d11_box.right = overlay_texture_info.width;
+                d3d11_box.top = 0;
+                d3d11_box.bottom = overlay_texture_info.height;
+                d3d11_box.front = 0;
+                d3d11_box.back = 1;
+
+                d3d11_overlay_state
+                    .d3d11_device_context
+                    .as_ref()
+                    .unwrap()
+                    .UpdateSubresource(
+                        d3d11_overlay_state.d3d11_main_texture as _,
+                        0,
+                        &d3d11_box,
+                        overlay_texture_info.bytes.as_ptr() as *const _,
+                        d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width * 4,
+                        0,
+                    );
+            }
         }
     }
-
-    d3d11_overlay_state
-        .d3d11_device_context
-        .as_ref()
-        .unwrap()
-        .UpdateSubresource(
-            d3d11_overlay_state.d3d11_main_texture as _,
-            0,
-            &d3d11_box,
-            overlay_texture_bytes.as_ptr() as *const _,
-            d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width * 4,
-            0,
-        );
 
     let d3d11_retaining_state_block = capture_d3d11_state(d3d11_overlay_state.d3d11_device_context);
     let _release_d3d11_retaining_state_block_guard = scopeguard::guard((), |_| {

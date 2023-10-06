@@ -1,5 +1,6 @@
 mod apply_d3d11_state;
 mod capture_d3d11_state;
+mod client;
 mod d3d11_hook;
 mod d3d11_overlay;
 mod d3d11_pixel_shader_obj_bytes;
@@ -8,10 +9,13 @@ mod d3d11_vertex_shader_obj_bytes;
 mod debug_console_client;
 mod dll_main;
 mod init;
+mod overlay;
+mod proto;
 mod release_d3d11_state;
 
 pub use apply_d3d11_state::*;
 pub use capture_d3d11_state::*;
+pub use client::*;
 pub use d3d11_hook::*;
 pub use d3d11_overlay::*;
 pub use d3d11_pixel_shader_obj_bytes::*;
@@ -20,4 +24,5 @@ pub use d3d11_vertex_shader_obj_bytes::*;
 pub use debug_console_client::*;
 pub use dll_main::*;
 pub use init::*;
+pub use overlay::*;
 pub use release_d3d11_state::*;

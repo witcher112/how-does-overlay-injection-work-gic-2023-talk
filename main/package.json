@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "main": "electron main.js"
+  },
+  "dependencies": {
+    "electron": "^17.0.0",
+    "protobufjs": "^6.0.0"
+  }
+}

@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+message SetTextureInfoMessagePayload {
+  bytes bytes = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+}
+
+message ClientMessagePayload {
+  oneof value {
+    SetTextureInfoMessagePayload set_texture_info_message_payload = 1;
+  }
+}
+
+message OnSizeChangedMessagePayload {
+  uint32 width = 1;
+  uint32 height = 2;
+}
+
+message ServerMessagePayload {
+  oneof value {
+    OnSizeChangedMessagePayload on_size_changed_message_payload = 1;
+  }
+}

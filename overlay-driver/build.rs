@@ -24,7 +24,7 @@ fn compile_directx_11_windows_hook_shader(
             DirectX11WindowsHookShaderType::VertexShader => {
                 D3D11_VERTEX_SHADER_SRC_FILE_PATH
             }
-            DirectX11WindowsHookShaderType::PixelShader => {
+            DirectX11WindowsHookShaderType::PixelShader => { 
                 D3D11_PIXEL_SHADER_SRC_FILE_PATH
             }
         });
@@ -67,5 +67,11 @@ fn compile_directx_11_windows_hook_shaders() {
 }
 
 pub fn main() {
+    protoc_rust::Codegen::new()
+        .out_dir("src")
+        .input("src/proto.proto")
+        .run()
+        .unwrap();
+
     compile_directx_11_windows_hook_shaders();
 }
