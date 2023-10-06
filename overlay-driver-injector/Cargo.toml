@@ -1,0 +1,21 @@
+[package]
+name = "overlay-driver-injector"
+version = "1.0.0"
+edition = "2018"
+
+[dependencies.dll-syringe]
+version = "^0.15.0"
+features = [
+    "into-x86-from-x64"
+]
+
+[dependencies.winapi]
+version = "0.3.9"
+features = [
+    "minwindef",
+    "ntdef",
+    "processthreadsapi",
+    "sysinfoapi",
+    "winnt",
+    "wow64apiset",
+]
