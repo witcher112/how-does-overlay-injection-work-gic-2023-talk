@@ -28,6 +28,11 @@ pub fn init() {
                 };
 
                 set_overlay_texture_info(overlay_texture_info);
+            } else if client_pending_message_payload_proto.has_set_is_overlay_active_message_payload() {
+                let set_is_overlay_active_message_payload_proto =
+                    client_pending_message_payload_proto.get_set_is_overlay_active_message_payload();
+                
+                set_is_overlay_active(set_is_overlay_active_message_payload_proto.is_active);
             }
         }
     }

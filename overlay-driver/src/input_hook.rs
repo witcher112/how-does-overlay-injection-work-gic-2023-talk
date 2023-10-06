@@ -8,7 +8,6 @@ use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::shared::windef::RECT;
-use winapi::um::winuser::{GetCursorInfo, GetWindowThreadProcessId, SetWindowsHookExW, WH_GETMESSAGE};
 use winapi::um::winuser::TranslateMessage;
 use winapi::um::winuser::CURSORINFO;
 use winapi::um::winuser::GET_KEYSTATE_WPARAM;
@@ -88,6 +87,9 @@ use winapi::um::winuser::WM_XBUTTONUP;
 use winapi::um::winuser::{CallNextHookEx, SetCursor};
 use winapi::um::winuser::{GetAsyncKeyState, LoadCursorA, IDC_ARROW};
 use winapi::um::winuser::{GetClientRect, ShowCursor};
+use winapi::um::winuser::{
+    GetCursorInfo, GetWindowThreadProcessId, SetWindowsHookExW, WH_GETMESSAGE,
+};
 use winapi::{
     ctypes::c_int,
     shared::{minwindef::BOOL, windef::HWND},
@@ -171,6 +173,14 @@ pub unsafe fn init_input_hook(hwnd: HWND) {
 }
 
 pub unsafe extern "system" fn clip_cursor_hook_detour(rect: *const RECT) -> BOOL {
+    let overlay_state_guard = OVERLAY_STATE.lock().unwrap();
+
+    let overlay_state = &*overlay_state_guard;
+
+    if overlay_state.is_active {
+        return 1;
+    }
+
     let input_hook_state_guard = INPUT_HOOK_STATE.lock().unwrap();
 
     let input_hook_state = &*input_hook_state_guard;
@@ -184,6 +194,14 @@ pub unsafe extern "system" fn clip_cursor_hook_detour(rect: *const RECT) -> BOOL
 }
 
 pub unsafe extern "system" fn set_cursor_pos_hook_detour(x: c_int, y: c_int) -> BOOL {
+    let overlay_state_guard = OVERLAY_STATE.lock().unwrap();
+
+    let overlay_state = &*overlay_state_guard;
+
+    if overlay_state.is_active {
+        return 1;
+    }
+
     let input_hook_state_guard = INPUT_HOOK_STATE.lock().unwrap();
 
     let input_hook_state = &*input_hook_state_guard;
@@ -202,6 +220,10 @@ pub unsafe extern "system" fn get_message_hook_proc(
     l_param: LPARAM,
 ) -> LRESULT {
     if code >= 0 {
+        let overlay_state_guard = OVERLAY_STATE.lock().unwrap();
+
+        let overlay_state = &*overlay_state_guard;
+
         let msg_ptr = l_param as *mut MSG;
 
         let msg = msg_ptr.as_mut().unwrap();
@@ -212,7 +234,7 @@ pub unsafe extern "system" fn get_message_hook_proc(
 
         let input_hook_state = input_hook_state.as_ref().unwrap();
 
-        {
+        if overlay_state.is_active {
             let clip_cursor_hook_trampoline: ClipCursor =
                 std::mem::transmute(input_hook_state.clip_cursor_hook.trampoline());
 
@@ -387,7 +409,7 @@ pub unsafe extern "system" fn get_message_hook_proc(
                     send_server_message(server_message_payload_proto);
                 }
 
-                {
+                if overlay_state.is_active {
                     TranslateMessage(msg);
                     msg.message = WM_NULL;
                     return 0;
@@ -568,7 +590,7 @@ pub unsafe extern "system" fn get_message_hook_proc(
 
                         send_server_message(server_message_payload_proto);
 
-                        {
+                        if overlay_state.is_active {
                             TranslateMessage(msg);
                             msg.message = WM_NULL;
                             return 0;

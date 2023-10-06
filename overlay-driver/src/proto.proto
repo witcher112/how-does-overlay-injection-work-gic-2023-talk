@@ -6,9 +6,14 @@ message SetTextureInfoMessagePayload {
   uint32 height = 3;
 }
 
+message SetIsOverlayActiveMessagePayload {
+  bool is_active = 1;
+}
+
 message ClientMessagePayload {
   oneof value {
     SetTextureInfoMessagePayload set_texture_info_message_payload = 1;
+    SetIsOverlayActiveMessagePayload set_is_overlay_active_message_payload = 2;
   }
 }
 

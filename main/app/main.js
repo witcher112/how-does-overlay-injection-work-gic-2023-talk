@@ -1,8 +1,9 @@
 const path = require("path");
 const net = require("net");
 const stream = require("stream");
-const { execSync, spawn, spawnSync } = require("child_process");
+const { execSync, spawn, spawnSync, exec } = require("child_process");
 const electron = require("electron");
+const electronLocalShortcut = require("electron-localshortcut");
 const protobufjs = require("protobufjs");
 
 class EncodedMessageDataStream extends stream.Transform {
@@ -65,7 +66,7 @@ class EncodedMessageDataStream extends stream.Transform {
   execSync(
     `cargo build --release`,
     {
-      cwd: path.resolve(__dirname, `..`, `debug-console`),
+      cwd: path.resolve(__dirname, `..`, `..`, `debug-console`),
       stdio: `ignore`,
     },
   );
@@ -73,7 +74,7 @@ class EncodedMessageDataStream extends stream.Transform {
   execSync(
     `cargo build --release`,
     {
-      cwd: path.resolve(__dirname, `..`, `overlay-driver-injector`),
+      cwd: path.resolve(__dirname, `..`, `..`, `overlay-driver-injector`),
       stdio: `ignore`,
     },
   );
@@ -81,7 +82,7 @@ class EncodedMessageDataStream extends stream.Transform {
   execSync(
     `cargo build --release`,
     {
-      cwd: path.resolve(__dirname, `..`, `overlay-driver`),
+      cwd: path.resolve(__dirname, `..`, `..`, `overlay-driver`),
       stdio: `ignore`,
     },
   );
@@ -98,7 +99,7 @@ class EncodedMessageDataStream extends stream.Transform {
   gameProcessHandle.on(`exit`, () => process.exit(0));
 
   const debugConsoleProcessHandle = spawn(
-    path.resolve(__dirname, `..`, `debug-console`, `target`, `release`, `debug-console.exe`),
+    path.resolve(__dirname, `..`, `..`, `debug-console`, `target`, `release`, `debug-console.exe`),
     {
       stdio: `pipe`,
     },
@@ -106,8 +107,23 @@ class EncodedMessageDataStream extends stream.Transform {
 
   debugConsoleProcessHandle.stdout.pipe(process.stdout);
 
+  execSync(
+    `yarn`,
+    {
+      cwd: path.resolve(__dirname, `..`, `ui`),
+    },
+  );
+
+  exec(
+    `yarn dev`,
+    {
+      cwd: path.resolve(__dirname, `..`, `ui`),
+    },
+  );
+
   const overlayDriverDllFilePath = path.resolve(
     __dirname,
+    `..`,
     `..`,
     `overlay-driver`,
     `target`,
@@ -116,12 +132,14 @@ class EncodedMessageDataStream extends stream.Transform {
   );
 
   spawnSync(
-    path.resolve(__dirname, `..`, `overlay-driver-injector`, `target`, `release`, `overlay-driver-injector.exe`),
+    path.resolve(__dirname, `..`, `..`, `overlay-driver-injector`, `target`, `release`, `overlay-driver-injector.exe`),
     [
       overlayDriverDllFilePath,
       gameProcessHandle.pid.toString(),
     ],
   );
+
+  let isOverlayActive = false;
 
   const overlayWindowHandle = new electron.BrowserWindow({
     webPreferences: {
@@ -131,10 +149,21 @@ class EncodedMessageDataStream extends stream.Transform {
     show: false,
   });
 
+  overlayWindowHandle.webContents.on(
+    `before-input-event`,
+    (electronEvent) => {
+
+      if (!isOverlayActive) {
+
+        electronEvent.preventDefault();
+      }
+    },
+  );
+
   const protoSchema = await new Promise((resolve, reject) => {
 
     protobufjs.load(
-      path.resolve(__dirname, `..`, `overlay-driver`, `src`, `proto.proto`),
+      path.resolve(__dirname, `..`, `..`, `overlay-driver`, `src`, `proto.proto`),
       (error, result) => {
 
         if (error !== null) {
@@ -194,6 +223,25 @@ class EncodedMessageDataStream extends stream.Transform {
     }
   });
 
+  electronLocalShortcut.register(
+    overlayWindowHandle,
+    `Ctrl+Shift+O`,
+    async () => {
+
+      isOverlayActive = !isOverlayActive;
+
+      const clientMessagePayloadProtoAsBytes = clientMessagePayloadType.encodeDelimited(
+        clientMessagePayloadType.create({
+          setIsOverlayActiveMessagePayload: {
+            isActive: isOverlayActive,
+          },
+        }),
+      ).finish();
+
+      clientHandle.write(clientMessagePayloadProtoAsBytes);
+    },
+  );
+
   overlayWindowHandle.webContents.on(
     `paint`,
     (_event, _dirty, image) => {
@@ -214,6 +262,9 @@ class EncodedMessageDataStream extends stream.Transform {
     },
   );
 
-  overlayWindowHandle.loadURL(path.resolve(__dirname, `index.html`));
+  overlayWindowHandle.loadURL(`http://127.0.0.1:5173`);
+
+  overlayWindowHandle.focusOnWebView();
+  overlayWindowHandle.webContents.focus();
 
 })();

@@ -559,6 +559,10 @@ pub unsafe fn update_d3d11_overlay(dxgi_swap_chain: *mut IDXGISwapChain) {
 
         let overlay_state = &*overlay_state_guard;
 
+        if !overlay_state.is_active {
+            return;
+        }
+
         if let Some(overlay_texture_info) = overlay_state.texture_info.as_ref() {
             if overlay_texture_info.width
                 == d3d11_overlay_state.dxgi_swap_chain_back_buffer_desc.Width
